@@ -332,4 +332,26 @@ export interface Hooks {
    * Modify tool definitions (description and parameters) sent to LLM
    */
   "tool.definition"?: (input: { toolID: string }, output: { description: string; parameters: any }) => Promise<void>
+  /**
+   * Called when a step finishes, before the finish reason is committed.
+   * Allows plugins to inspect and override the finish reason.
+   * Useful for fixing incorrect finish_reason values from upstream providers.
+   */
+  "chat.finish"?: (
+    input: {
+      sessionID: string
+      messageID: string
+      agent: string
+      model: Model
+      providerID: string
+      finishReason: string | undefined
+      toolCalls: Array<{ id: string; name: string; input: unknown }>
+      usage: {
+        promptTokens: number
+        completionTokens: number
+        totalTokens: number
+      }
+    },
+    output: { reason: string },
+  ) => Promise<void>
 }

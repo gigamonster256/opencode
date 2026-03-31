@@ -72,6 +72,7 @@ interface ProcessorContext extends Input {
   needsCompaction: boolean
   currentText: SessionV1.TextPart | undefined
   reasoningMap: Record<string, SessionV1.ReasoningPart>
+  toolCallsHistory: Array<{ id: string; name: string; input: unknown }>
 }
 
 type StreamEvent = LLMEvent
@@ -111,6 +112,7 @@ export const layer = Layer.effect(
         needsCompaction: false,
         currentText: undefined,
         reasoningMap: {},
+        toolCallsHistory: [],
       }
       let aborted = false
 
@@ -348,6 +350,7 @@ export const layer = Layer.effect(
                 : value.providerMetadata,
             }))
 
+            ctx.toolCallsHistory.push({ id: value.id, name: value.name, input })
             const parts = yield* MessageV2.parts(ctx.assistantMessage.id).pipe(
               Effect.provideService(Database.Service, database),
             )
@@ -439,6 +442,27 @@ export const layer = Layer.effect(
               metadata: value.providerMetadata,
             })
             ctx.assistantMessage.finish = value.reason
+
+            const finishOutput = { reason: value.reason ?? "unknown" }
+            yield* plugin.trigger(
+              "chat.finish",
+              {
+                sessionID: ctx.sessionID,
+                messageID: ctx.assistantMessage.id,
+                agent: ctx.assistantMessage.agent,
+                model: ctx.model,
+                providerID: ctx.model.providerID,
+                finishReason: value.reason,
+                toolCalls: ctx.toolCallsHistory,
+                usage: {
+                  promptTokens: usage.tokens.input,
+                  completionTokens: usage.tokens.output,
+                  totalTokens: usage.tokens.total,
+                },
+              },
+              finishOutput,
+            )
+            ctx.assistantMessage.finish = finishOutput.reason
             ctx.assistantMessage.cost += usage.cost
             ctx.assistantMessage.tokens = usage.tokens
             yield* session.updatePart({
